@@ -1,0 +1,7 @@
+{u'track':
+  {u'album':
+    {u'date': u'2011',
+     u'__model__': u'Album',
+      u'uri': u'spotify:album:1WIzoXkKtWnUcIefsrN1Ih',
+      u'name': u'Paper Airplane',
+      u'artists': [{u'__model__': u'Artist', u'name': u'Alison Krauss & Union Station', u'uri': u'spotify:artist:0OTnx2X2FDXeewcm72lavT'}]}, u'__model__': u'Track', u'name': u'Paper Airplane', u'disc_no': 0, u'uri': u'spotify:track:6WUHOZRY0lKjDGfg9HW4fl', u'length': 217000, u'track_no': 1, u'artists': [{u'__model__': u'Artist', u'name': u'Alison Krauss & Union Station', u'uri': u'spotify:artist:0OTnx2X2FDXeewcm72lavT'}], u'date': u'2011', u'bitrate': 320}, u'__model__': u'TlTrack', u'tlid': 7}
