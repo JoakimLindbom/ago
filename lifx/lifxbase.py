@@ -38,8 +38,22 @@ class lifxbase(object):
         self.log = None
 
         self.app = app
-        #comment next row when in test mode for now
-        #self.log = app.log
+        try:
+            self.log = app.log
+        except AttributeError:
+            #We seem to be in test mode, need a local logger
+            class llog:
+                def __init__(self):
+                    pass
+                def info(self, msg):
+                    print ("INFO: %s" % msg)
+                def trace(self, msg):
+                    print ("TRACE: %s" % msg)
+                def debug(self, msg):
+                    print ("DEBUG: %s" % msg)
+                def error(self, msg):
+                    print ("ERROR: %s" % msg)
+            self.log = llog()
 
     def __get__(self, obj, objtype=None):
         pass
@@ -84,6 +98,9 @@ class lifxbase(object):
         pass
 
     def listRemotes(self):
+        pass
+
+    def getLightState(self, devId):
         pass
 
     def getDeviceId(self, i):

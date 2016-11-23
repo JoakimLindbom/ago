@@ -62,29 +62,33 @@ class lifxnet(lifxbase):
     def set_state(self, devId, state):
         """Set light to "on" or "off" """
         payload = {"power": state,}
-        print payload
-        response = requests.put('https://api.lifx.com/v1/lights/' + devId + '/state', data = payload, headers=self.headers)
-        #print response.content
-        if response.status_code == 207: # Multiple status received
-            if devId in response.content:
-                if '"status":"ok"' in response.content:
-                    return True
-                elif '"status":"offline"' in response.content:
-                    return False
-            else:
-                return False
-
-        if response.status_code ==200:
-            print "resonse 200 - check code!"
-            return True
-
-        return False
+        #self.log.trace(payload)
+        response = requests.put('https://api.lifx.com/v1/lights/' + devId + '/state', data=payload, headers=self.headers)
+        return self.checkResponse(response)
 
     def list_lights(self):
         """Get a list of devices for current account"""
         response = requests.get('https://api.lifx.com/v1/lights/all', headers=self.headers)
         #print response.content
         return response
+
+    def getLightState(self, devId):
+        """Get state of one light"""
+        response = requests.get('https://api.lifx.com/v1/lights/id:{}'.format(devId), headers=self.headers)
+
+        if response.status_code == 200:
+            print response.content
+            rsp = response.content
+            if "id" in rsp:  # .content:
+                rj = json.loads(rsp)
+                state= {"power" : rj[0]["power"],
+                        "dimlevel" : rj[0]["brightness"],
+                       }
+
+                return state
+
+        return None
+
 
     def listSwitches(self):
         """Create a dictionary with all lights"""
@@ -97,7 +101,7 @@ class lifxnet(lifxbase):
             rj=json.loads(rsp)
             lights = {}
             for i in rj:
-                print i
+                #print i
                 light = {}
                 if u'id' in i:
                     devId = i["id"]
@@ -108,7 +112,7 @@ class lifxnet(lifxbase):
                         "id": devId,
                         "name": i["label"],
                         "model": model}
-                    if 'White' in model:
+                    if 'White' in model: # TODO: Replace with Dimmer property
                         dev["isDimmer"] = True
                     else:
                         dev["isDimmer"] = False
@@ -118,13 +122,13 @@ class lifxnet(lifxbase):
 
     def turnOn(self, devId):
         """ Turn on light"""
-        print "on"
+        self.log.trace('turnOn {}'.format(devId))
         self.set_state(devId, "on")
         return True
 
     def turnOff(self, devId):
         """ Turn off light"""
-        print "off"
+        self.log.trace('turnOff {}'.format(devId))
         self.set_state(devId, "off")
         #return self.doMethod(devId, self.LIFX_TURNOFF)
         return True
@@ -134,7 +138,7 @@ class lifxnet(lifxbase):
 
     def dim(self, devId, level):
         """ Dim light, level=0-100 """
-        print "dim - " + str(float(level/100.0))
+        self.log.trace('Dim {} level {}'.format(devId, str(float(level/100.0))))
         #TODO: Add support for Duration
         payload = {"power": "on",
                    "brightness": float(level/100.0),
@@ -142,7 +146,60 @@ class lifxnet(lifxbase):
         #print payload
         response = requests.put('https://api.lifx.com/v1/lights/' + devId + '/state', data = payload, headers=self.headers)
         # return self.doMethod(devId, self.LIFX_DIM, level)
-        return True
+        return self.checkResponse(response)
+
+    def checkResponse(self, response):
+        #Response: < Response[207] >
+        #Status code: 207
+        #Content: {"results": [{"id": "e111d111f111", "label": "LIFX Bulb 12f116", "status": "offline"}]}
+
+        #Response: < Response[207] >
+        #Status code: 207
+        #Content: {"results": [{"id": "e111d112f111", "label": "LIFX Bulb 12f116", "status": "ok"}]}
+
+        #print ("Response: %s" % rsp)
+        #print ("Status code: %d" % rsp.status_code)
+        #print ("Content: %s" % rsp.content)
+
+        if response.status_code == 200:
+            return True
+
+        if response.status_code == 207:
+            rspj = json.loads(response.content)
+
+            try:
+                #if rspj[u'results'][0][u'status'] == 'ok':
+                for r in rspj[u'results']:
+                    #print r
+                    if r[u'status'] == 'ok': #TODO: check if this is sufficient
+                        return True
+                    if r[u'status'] == 'offline':
+                        self.log.error("Cloud API return Offline status. Check your connection and if http://api.lifx.com is alive")
+
+            except KeyError:
+                self.log.error("Malformed response Code=%d, rsp=%s" % (response.status_code, response.content))
+
+            return False
+
+        def ErrorMessages(ErrorCode):
+            sw = {
+                400: 'Bad request',
+                401: 'Unauthorised, bad access token. Check the API_KEY setting.',
+                403: 'Permission denied. Bad OAuth scope. Check the API_KEY setting.',
+                404: 'Not found. This is either a bug or LIFX has changed their APIs.',
+                422: 'Missing or malformed parameters. This is either a bug or LIFX has changed their APIs.',
+                426: 'HTTP was used in stead of HTTPS. Likely a bug',
+                429: 'Too many requests. Slow down, max 60 requests/minute',
+                500: 'Something went wrong on LIFXs end.',
+                502: 'Something went wrong on LIFXs end.',
+                503: 'Something went wrong on LIFXs end.',
+                523: 'Something went wrong on LIFXs end.',
+            }
+            return sw.get(ErrorCode, "Something went wrong and no message text assigned. Bummer.")
+
+        self.log.error(ErrorMessages(response.status_code) + ' Code={}, rsp={}'.format(response.status_code, response.content))
+        return False
+
 
     def getName(self, devId):
         try:
@@ -217,7 +274,7 @@ class lifxnet(lifxbase):
 
     def listSensors(self):
         response = self.doRequest('sensors/list', {'includeIgnored': 1, 'includeValues': 1})
-        print("Number of sensors: %i" % len(response['sensor']))
+        self.log.info("Number of sensors: %i" % len(response['sensor']))
         for sensor in response['sensor']:
             if sensor["id"] not in self.sensors:
                 s = {}
