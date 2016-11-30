@@ -23,15 +23,24 @@ import threading
 import time
 from lifxnet import LifxNet
 
+
+class ConfigurationError(Exception):
+    def __init__(self, msg):
+        self.msg = msg
+
+    def __str__(self):
+        return repr(self.msg)
+
+
 class AgoLIFX(agoclient.AgoApp):
     """AgoControl device with support for the LIFX protocol"""
     def app_cmd_line_options(self, parser):
         """App-specific command line options"""
         parser.add_argument('-T', '--test', action="store_true",
-                help="This can be set or not set")
+                            help="This can be set or not set")
 
         parser.add_argument('--set-parameter', 
-                help="Set this to do set_config_option with the value upon startup")
+                            help="Set this to do set_config_option with the value upon startup")
 
     def message_handler(self, internalid, content):
         """The messagehandler."""
@@ -39,7 +48,7 @@ class AgoLIFX(agoclient.AgoApp):
             if content["command"] == "on":
                 self.log.debug("switching on: %s", internalid)
 
-                if self.lifx.turnOn(internalid): # TODO: Add retry handling if state not as expected?
+                if self.lifx.turnOn(internalid):  # TODO: Add retry handling if state not as expected?
                     self.log.trace("TurnOn OK")
                     self.connection.emit_event(internalid, "event.device.statechanged", 255, "")
                 else:
@@ -55,12 +64,19 @@ class AgoLIFX(agoclient.AgoApp):
                     self.log.error("Failed to turn on device")
 
             elif content["command"] == "setlevel":
-                self.log.debug("dimming: %s", internalid)
+                self.log.debug("dimming: {}, level={}".format(internalid, content["level"]))
                 if self.lifx.dim(internalid, int(content["level"])):
                     self.log.trace("Dim OK")
-                    self.connection.emit_event(internalid, "event.device.statechanged", content["level"], "") # TODO: Check if this is correct
+                    self.connection.emit_event(internalid, "event.device.statechanged", content["level"], "")
                 else:
                     self.log.error("Failed dimming device")
+            elif content["command"] == "setcolor":
+                red = int(content["red"]);
+                green = int(content["green"]);
+                blue = int(content["blue"]);
+                self.log.debug("setting color for: {} - R={} B={} G={}".format(internalid), red, blue, green)
+
+
 
     def setup_app(self):
         # Specify our message handler method
@@ -71,14 +87,14 @@ class AgoLIFX(agoclient.AgoApp):
         else:
             self.log.warning("Test argument was NOT set")
 
-        API = self.get_config_option('API', 'Cloud', section='lifx', app='lifx')
-        self.log.info("Configuration parameter 'API'=%s", API)
-        if "Cloud" in API:
-            API_KEY = self.get_config_option('APIKEY', 'NoKey', section='lifx', app='lifx')
-            self.log.info("Configuration parameter 'APIKEY'=%s", API_KEY)
+        api = self.get_config_option('API', 'Cloud', section='lifx', app='lifx')
+        self.log.info("Configuration parameter 'API'=%s", api)
+        if "Cloud" in api:
+            api_key = self.get_config_option('APIKEY', 'NoKey', section='lifx', app='lifx')
+            self.log.info("Configuration parameter 'APIKEY'=%s", api_key)
             self.lifx = LifxNet(self)
-            self.lifx.init(API_KEY=API_KEY)
-        elif "LAN" in API:
+            self.lifx.init(API_KEY=api_key)
+        elif "LAN" in api:
             raise ConfigurationError("LAN configuration cannot be started at this time")
         else:
             raise ConfigurationError("Unsupported API selected. Typo on conf file?")
@@ -93,20 +109,22 @@ class AgoLIFX(agoclient.AgoApp):
         # Get devices and add to agocontrol
         self.lifx.list_lights()
         self.switches = self.lifx.listSwitches()
-        if len(self.switches) >0:
-            #print self.switches
+        if len(self.switches) > 0:
+            # print self.switches
             self.log.info('Looking for devices, found:')
             for devId, dev in self.switches.iteritems():
                 self.log.info('Name = {}, Model={}'.format(dev["name"], dev["model"]))
-                self.connection.add_device(dev["id"], "dimmer", dev["name"]) # TODO: Check dimming to set correct type
+                if 'White' in dev["model"]:
+                    self.connection.add_device(dev["id"], "dimmer", dev["name"])  # TODO: Check dimming to set correct type
+                elif 'Color' in dev["model"]:
+                    self.connection.add_device(dev["id"], "dimmerrgb", dev["name"])
 
         # for our threading lifx in the next section we also add a binary sensor:
-        #self.connection.add_device("125", "binarysensor")
+        # self.connection.add_device("125", "binarysensor")
 
         BACKGROUND = PullStatus(self, self.log)
         BACKGROUND.setDaemon(True)
         BACKGROUND.start()
-
 
     def app_cleanup(self):
         pass
@@ -114,7 +132,7 @@ class AgoLIFX(agoclient.AgoApp):
 
 class PullStatus(threading.Thread):
     """The background thread is checking status of the bulbs
-       This is needed if e.g. the LIFX smartphone app  och scheduling is used to alter state"""
+       This is needed if e.g. the LIFX smartphone app or scheduling is used to alter state"""
     def __init__(self, app, log):
         threading.Thread.__init__(self)
         self.app = app
@@ -122,15 +140,15 @@ class PullStatus(threading.Thread):
         self.switches = self.app.switches
 
     def run(self):
-        level = 0
-        self.log.info('Background tread started')
+        self.log.info('Background thread started')
 
         # TODO: Improve this; we do not handle proper shutdown..
         while not self.app.is_exit_signaled():
             for devid in self.switches:
                 state = self.app.lifx.getLightState(devid)
-                self.app.connection.emit_event(devid, "event.device.statechanged", 255 if state["power"] == u'on' else 0, "")
-            time.sleep(30) # TODO: Calculate ((60-n)/NoDevices)/60
+                self.app.connection.emit_event(devid, "event.device.statechanged", state["dimlevel"] if state["power"] == u'on' else 0, "")
+                self.log.debug("PullStatus: {}, {}, level={}".format(devid, state["power"], state["dimlevel"]))
+            time.sleep(30)  # TODO: Calculate ((60-n)/NoDevices)/60
 
 if __name__ == "__main__":
     AgoLIFX().main()

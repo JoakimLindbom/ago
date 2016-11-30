@@ -19,11 +19,18 @@ __version__ = AGO_LIFX_VERSION
 from lifxbase import lifxbase
 # import sys, getopt, httplib, urllib, json, os, thread, time
 # import oauth.oauth as oauth
-# import datetime
+import time
 from agoclient.agoapp import ConfigurationError
 import json
 import requests
 
+
+class LIFX_Offline(Exception):
+    def __init__(self, msg):
+        self.msg = msg
+
+    def __str__(self):
+        return repr(self.msg)
 
 class LifxNet(lifxbase):
     """Class used for Lifx devices via LIFX Cloud API"""
@@ -58,12 +65,34 @@ class LifxNet(lifxbase):
     def close(self):
         pass
 
-    def set_state(self, devId, state):
+    def set_state(self, devId, state, limit=0):
         """Set light to "on" or "off" """
         payload = {"power": state,}
         #self.log.trace(payload)
         response = requests.put('https://api.lifx.com/v1/lights/' + devId + '/state', data=payload, headers=self.headers)
-        return self.checkResponse(response)
+        try:
+            return self.checkResponse(response)
+        except LIFX_Offline:
+            """Workaround for intermediate Offline status"""
+            self.log.info('Cloud API return Offline status. Going into retry mode')
+            if limit < 3:
+                self.log.info('Retry #{}'.format(limit))
+                limit += 1
+                time.sleep(2)
+                return self.set_state(devId, state, limit)
+            else:
+                self.log.info('Retrying did not work. Ending')
+                return False
+
+    def set_colour(self, devId, red, blue, green):
+        """Set light to colour (RGB) """
+        print red
+        print blue
+        print green
+
+        payload = {"color": "rgb:{},{},{}".format(red, blue, green)}
+        self.log.trace(payload)
+        response = requests.put('https://api.lifx.com/v1/lights/' + devId + '/state', data=payload, headers=self.headers)
 
     def list_lights(self):
         """Get a list of devices for current account"""
@@ -80,9 +109,9 @@ class LifxNet(lifxbase):
             rsp = response.content
             if "id" in rsp:  # .content:
                 rj = json.loads(rsp)
-                state= {"power" : rj[0]["power"],
-                        "dimlevel" : rj[0]["brightness"],
-                       }
+                state = {"power":    rj[0]["power"],       # on/off
+                         "dimlevel": rj[0]["brightness"]*100,  # 0-100 ???
+                         }
 
                 return state
 
@@ -92,6 +121,8 @@ class LifxNet(lifxbase):
     def listSwitches(self):
         """Create a dictionary with all lights"""
         ra = self.list_lights()
+        if not self.checkResponse(ra):
+           return {}
         rsp = ra.content
         if "id" in rsp:
             rj = json.loads(rsp)
@@ -168,7 +199,8 @@ class LifxNet(lifxbase):
                     if r[u'status'] == 'ok':  # TODO: check if this is sufficient
                         return True
                     if r[u'status'] == 'offline':
-                        self.log.error("Cloud API return Offline status. Check your connection and if http://api.lifx.com is alive")
+                        self.log.error('Cloud API return Offline status. Check your connection and if http://api.lifx.com is alive')
+                        raise LIFX_Offline('Cloud API return Offline status. Check your connection and if http://api.lifx.com is alive')
 
             except KeyError:
                 self.log.error("Malformed response Code=%d, rsp=%s" % (response.status_code, response.content))
