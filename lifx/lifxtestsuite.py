@@ -1,14 +1,14 @@
 import unittest
 import time
-from lifxnet import lifxnet
+from lifxnet import LifxNet
 
 from lifxtestsuite1 import API_KEY
 
 class lifxTests(unittest.TestCase):
     def setUp(self):
         #print ("Configuration parameter 'APIKEY'=%s", API_KEY)
-        self.lifx = lifxnet(self)
-        self.lifx.init(API_KEY)
+        self.lifx = LifxNet(self)
+        self.lifx.init(API_KEY=API_KEY)
         self.switches = self.lifx.listSwitches()
         self.assertGreater(len(self.switches), 0, "No lamps found. Error in config?")
         print ("No lamps found %d" % len(self.switches))

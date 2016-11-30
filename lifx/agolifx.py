@@ -21,7 +21,7 @@ import agoclient
 
 import threading
 import time
-from lifxnet import lifxnet
+from lifxnet import LifxNet
 
 class AgoLIFX(agoclient.AgoApp):
     """AgoControl device with support for the LIFX protocol"""
@@ -33,21 +33,13 @@ class AgoLIFX(agoclient.AgoApp):
         parser.add_argument('--set-parameter', 
                 help="Set this to do set_config_option with the value upon startup")
 
-
-    # the message_handler method will be called by the CLIENT
-    # library when a message comes in that is destined for
-    # one of the child devices you're handling
-    # the first parameter is your internal id (all the mapping
-    # from ago control uuids to the internal ids is handled
-    # transparently for you)
-    # the second parameter is a dict with the message content
     def message_handler(self, internalid, content):
         """The messagehandler."""
         if "command" in content:
             if content["command"] == "on":
                 self.log.debug("switching on: %s", internalid)
 
-                if self.lifx.turnOn(internalid):
+                if self.lifx.turnOn(internalid): # TODO: Add retry handling if state not as expected?
                     self.log.trace("TurnOn OK")
                     self.connection.emit_event(internalid, "event.device.statechanged", 255, "")
                 else:
@@ -66,28 +58,31 @@ class AgoLIFX(agoclient.AgoApp):
                 self.log.debug("dimming: %s", internalid)
                 if self.lifx.dim(internalid, int(content["level"])):
                     self.log.trace("Dim OK")
-                    self.connection.emit_event(internalid, "event.device.statechanged", content["level"], "") #TODO: Check if this is correct
+                    self.connection.emit_event(internalid, "event.device.statechanged", content["level"], "") # TODO: Check if this is correct
                 else:
                     self.log.error("Failed dimming device")
 
     def setup_app(self):
-        # specify our message handler method
+        # Specify our message handler method
         self.connection.add_handler(self.message_handler)
 
-        # If we want to use the custom command line argument, we look at
-        # self.args:
         if self.args.test:
             self.log.info("Test argument was set")
         else:
             self.log.warning("Test argument was NOT set")
 
-        API = self.get_config_option('API', 'Cloud')
+        API = self.get_config_option('API', 'Cloud', section='lifx', app='lifx')
         self.log.info("Configuration parameter 'API'=%s", API)
         if "Cloud" in API:
-            API_KEY = self.get_config_option('APIKEY', 'c7d12d4b5176bea52eba449211ca5e7551d9ce737d0dc36623968e3550bcb460', section='LIFX', app='LIFX')
+            #API_KEY = self.get_config_option('APIKEY', 'c7d12d4b5176bea52eba449211ca5e7551d9ce737d0dc36623968e3550bcb460', section='LIFX', app='LIFX')
+            API_KEY = self.get_config_option('APIKEY', 'NoKey', section='lifx', app='lifx')
             self.log.info("Configuration parameter 'APIKEY'=%s", API_KEY)
-            self.lifx = lifxnet(self)
-            self.lifx.init(API_KEY)
+            self.lifx = LifxNet(self)
+            self.lifx.init(API_KEY=API_KEY)
+        elif "LAN" in API:
+            raise ConfigurationError("LAN configuration cannot be started at this time")
+        else:
+            raise ConfigurationError("Unsupported API selected. Typo on conf file?")
 
         if self.args.set_parameter:
             self.log.info("Setting configuration parameter 'some_key' to %s", self.args.set_parameter)
@@ -98,10 +93,10 @@ class AgoLIFX(agoclient.AgoApp):
 
         # we add a switch and a dimmer
         self.lifx.list_lights()
-        switches = self.lifx.listSwitches()
-        if len(switches) >0:
-            print switches
-            for devId, dev in switches.iteritems():
+        self.switches = self.lifx.listSwitches()
+        if len(self.switches) >0:
+            print self.switches
+            for devId, dev in self.switches.iteritems():
                 #if dev["model"]==""
                 print dev
                 print dev["model"]
@@ -111,9 +106,9 @@ class AgoLIFX(agoclient.AgoApp):
         # for our threading lifx in the next section we also add a binary sensor:
         #self.connection.add_device("125", "binarysensor")
 
-        #BACKGROUND = TestEvent(self)
-        #BACKGROUND.setDaemon(True)
-        #BACKGROUND.start()
+        BACKGROUND = TestEvent(self, self.log)
+        BACKGROUND.setDaemon(True)
+        BACKGROUND.start()
 
 
     def app_cleanup(self):
@@ -126,27 +121,24 @@ class AgoLIFX(agoclient.AgoApp):
 
 class TestEvent(threading.Thread):
     """Test Event."""
-    def __init__(self, app):
+    def __init__(self, app, log):
         threading.Thread.__init__(self)
         self.app = app
+        self.log = log
+        self.switches = self.app.switches
 
     def run(self):
         level = 0
-        # This is a dummy backend thread. It loops forever.
-        # It is important that we exit when told to, by checking is_exit_signaled.
-        #
-        # TODO: Improve this lifx; we do not handle proper shutdown..
-        while not self.app.is_exit_signaled():
-            self.app.connection.emit_event("125",
-                "event.security.sensortriggered", level, "")
-            if (level == 0):
-                level = 255
-            else:
-                level = 0
-            time.sleep(5)
+        self.log.info('Background tread started')
 
-# Finally, but very important.
-# We must call the main function of the application object
+        # It is important that we exit when told to, by checking is_exit_signaled.
+
+        # TODO: Improve this; we do not handle proper shutdown..
+        while not self.app.is_exit_signaled():
+            for devid in self.switches:
+                state = self.app.lifx.getLightState(devid)
+                self.app.connection.emit_event(devid, "event.device.statechanged", 255 if state["power"] == u'on' else 0, "")
+            time.sleep(30) # TODO: Calculate ((60-n)/NoDevices)/60
+
 if __name__ == "__main__":
     AgoLIFX().main()
-

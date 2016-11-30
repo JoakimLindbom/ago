@@ -17,19 +17,19 @@ __version__ = AGO_LIFX_VERSION
 ############################################
 
 from lifxbase import lifxbase
-import sys, getopt, httplib, urllib, json, os, thread, time
-#import oauth.oauth as oauth
-import datetime
+# import sys, getopt, httplib, urllib, json, os, thread, time
+# import oauth.oauth as oauth
+# import datetime
 from agoclient.agoapp import ConfigurationError
 import json
 import requests
 
 
-class lifxnet(lifxbase):
+class LifxNet(lifxbase):
     """Class used for Lifx devices via LIFX Cloud API"""
 
     def __init__(self, app):
-        super(lifxnet, self).__init__(app)
+        super(LifxNet, self).__init__(app)
 
         self.devices = {}
         self.models = {}
@@ -45,13 +45,12 @@ class lifxnet(lifxbase):
     def __delete__(self, obj):
         pass
 
-    def init(self, API_KEY):
+    def init(self, API_KEY=None, sensor_poll_delay=None, temp_units='C'):
         self.SUPPORTED_METHODS = self.LIFX_TURNON | self.LIFX_TURNOFF | self.LIFX_DIM
 
         self.API_KEY = API_KEY
         if not self.API_KEY:
             raise ConfigurationError("API_KEY missing in LIFX.conf. Cannot continue")
-            return False
 
         self.headers = {"Authorization": "Bearer %s" % self.API_KEY, }
         return True
@@ -77,7 +76,7 @@ class lifxnet(lifxbase):
         response = requests.get('https://api.lifx.com/v1/lights/id:{}'.format(devId), headers=self.headers)
 
         if response.status_code == 200:
-            print response.content
+            # print response.content
             rsp = response.content
             if "id" in rsp:  # .content:
                 rj = json.loads(rsp)
@@ -94,30 +93,27 @@ class lifxnet(lifxbase):
         """Create a dictionary with all lights"""
         ra = self.list_lights()
         rsp = ra.content
-        #print len(rsp)
-        #print rsp
-        #print rsp.content
-        if "id" in rsp: #.content:
-            rj=json.loads(rsp)
+        if "id" in rsp:
+            rj = json.loads(rsp)
             lights = {}
             for i in rj:
-                #print i
+                # print i
                 light = {}
                 if u'id' in i:
-                    devId = i["id"]
+                    dev_id = i["id"]
 
-                    model = i["product"]["name"] # u'White 800'
+                    model = i["product"]["name"]  # u'White 800'
 
                     dev = {
-                        "id": devId,
+                        "id": dev_id,
                         "name": i["label"],
                         "model": model}
-                    if 'White' in model: # TODO: Replace with Dimmer property
+                    if 'White' in model:  # TODO: Replace with Dimmer property
                         dev["isDimmer"] = True
                     else:
                         dev["isDimmer"] = False
-                    #light["status"] = "on" if i["connected"] else "Off"
-                    self.switches[devId] = dev
+                    # light["status"] = "on" if i["connected"] else "Off"
+                    self.switches[dev_id] = dev
         return self.switches
 
     def turnOn(self, devId):
@@ -126,15 +122,15 @@ class lifxnet(lifxbase):
         self.set_state(devId, "on")
         return True
 
-    def turnOff(self, devId):
+    def turnOff(self, dev_Id):
         """ Turn off light"""
-        self.log.trace('turnOff {}'.format(devId))
-        self.set_state(devId, "off")
-        #return self.doMethod(devId, self.LIFX_TURNOFF)
+        self.log.trace('turnOff {}'.format(dev_Id))
+        self.set_state(dev_Id, "off")
+        # return self.doMethod(devId, self.LIFX_TURNOFF)
         return True
 
-    def getErrorString(self, resCode):
-        return resCode  # Telldus API returns strings, not resCodes. Just for making this compatible with Lifx Duo API
+    def getErrorString(self, res_code):
+        return res_code  # TOT: Remove
 
     def dim(self, devId, level):
         """ Dim light, level=0-100 """
@@ -142,24 +138,24 @@ class lifxnet(lifxbase):
         #TODO: Add support for Duration
         payload = {"power": "on",
                    "brightness": float(level/100.0),
-                   "duration": float(1.0),}
-        #print payload
-        response = requests.put('https://api.lifx.com/v1/lights/' + devId + '/state', data = payload, headers=self.headers)
+                   "duration": float(1.0), }
+        # print payload
+        response = requests.put('https://api.lifx.com/v1/lights/' + devId + '/state', data=payload, headers=self.headers)
         # return self.doMethod(devId, self.LIFX_DIM, level)
         return self.checkResponse(response)
 
     def checkResponse(self, response):
-        #Response: < Response[207] >
-        #Status code: 207
-        #Content: {"results": [{"id": "e111d111f111", "label": "LIFX Bulb 12f116", "status": "offline"}]}
+        # Response: < Response[207] >
+        # Status code: 207
+        # Content: {"results": [{"id": "e111d111f111", "label": "LIFX Bulb 12f116", "status": "offline"}]}
 
-        #Response: < Response[207] >
-        #Status code: 207
-        #Content: {"results": [{"id": "e111d112f111", "label": "LIFX Bulb 12f116", "status": "ok"}]}
+        # Response: < Response[207] >
+        # Status code: 207
+        # Content: {"results": [{"id": "e111d112f111", "label": "LIFX Bulb 12f116", "status": "ok"}]}
 
-        #print ("Response: %s" % rsp)
-        #print ("Status code: %d" % rsp.status_code)
-        #print ("Content: %s" % rsp.content)
+        # print ("Response: %s" % rsp)
+        # print ("Status code: %d" % rsp.status_code)
+        # print ("Content: %s" % rsp.content)
 
         if response.status_code == 200:
             return True
@@ -168,10 +164,8 @@ class lifxnet(lifxbase):
             rspj = json.loads(response.content)
 
             try:
-                #if rspj[u'results'][0][u'status'] == 'ok':
                 for r in rspj[u'results']:
-                    #print r
-                    if r[u'status'] == 'ok': #TODO: check if this is sufficient
+                    if r[u'status'] == 'ok':  # TODO: check if this is sufficient
                         return True
                     if r[u'status'] == 'offline':
                         self.log.error("Cloud API return Offline status. Check your connection and if http://api.lifx.com is alive")
@@ -181,31 +175,31 @@ class lifxnet(lifxbase):
 
             return False
 
-        def ErrorMessages(ErrorCode):
+        def ErrorMessages(error_code):
             sw = {
                 400: 'Bad request',
                 401: 'Unauthorised, bad access token. Check the API_KEY setting.',
                 403: 'Permission denied. Bad OAuth scope. Check the API_KEY setting.',
                 404: 'Not found. This is either a bug or LIFX has changed their APIs.',
                 422: 'Missing or malformed parameters. This is either a bug or LIFX has changed their APIs.',
-                426: 'HTTP was used in stead of HTTPS. Likely a bug',
+                426: 'HTTP was used instead of HTTPS. Likely a bug',
                 429: 'Too many requests. Slow down, max 60 requests/minute',
                 500: 'Something went wrong on LIFXs end.',
                 502: 'Something went wrong on LIFXs end.',
                 503: 'Something went wrong on LIFXs end.',
                 523: 'Something went wrong on LIFXs end.',
             }
-            return sw.get(ErrorCode, "Something went wrong and no message text assigned. Bummer.")
+            return sw.get(error_code, "Something went wrong and no message text assigned. Bummer.")
 
         self.log.error(ErrorMessages(response.status_code) + ' Code={}, rsp={}'.format(response.status_code, response.content))
         return False
 
 
-    def getName(self, devId):
+    def getName(self, dev_id):
         try:
-            return self.names[devId]
+            return self.names[dev_id]
         except:
-            response = self.doRequest('device/info', {'id': devId, 'supportedMethods': self.SUPPORTED_METHODS})
+            response = self.doRequest('device/info', {'id': dev_id, 'supportedMethods': self.SUPPORTED_METHODS})
 
             if ('error' in response):
                 name = ''
@@ -213,7 +207,7 @@ class lifxnet(lifxbase):
                 print ("retString=" + retString)
             else:
                 name = response['name']
-                self.names[devId] = response['name']
+                self.names[dev_id] = response['name']
 
             return name
 
@@ -227,18 +221,18 @@ class lifxnet(lifxbase):
     def getDeviceId(self, i):
         return (self.devices[i])
 
-    def getModel(self, devId):
-        if devId in self.switches:
-            s = self.switches[devId]
+    def getModel(self, dev_id):
+        if dev_id in self.switches:
+            s = self.switches[dev_id]
             return s["model"]
-        elif devId in self.remotes:
-            s = self.remotes[devId]
+        elif dev_id in self.remotes:
+            s = self.remotes[dev_id]
             return s["model"]
-        elif devId in self.sensors:
-            s = self.sensors[devId]
+        elif dev_id in self.sensors:
+            s = self.sensors[dev_id]
             return s["model"]
 
-        response = self.doRequest('device/info', {'id': devId, 'supportedMethods': self.SUPPORTED_METHODS})
+        response = self.doRequest('device/info', {'id': dev_id, 'supportedMethods': self.SUPPORTED_METHODS})
 
         if ('error' in response):
             model = ''
@@ -246,26 +240,14 @@ class lifxnet(lifxbase):
             print ("retString=" + retString)
         else:
             if response['type'] == 'device':
-                self.models[devId] = response['model']
+                self.models[dev_id] = response['model']
             elif response['type'] == "group":
-                self.models[devId] = 'group'
+                self.models[dev_id] = 'group'
                 # Devices in the group stored in  response['devices']
 
-        return self.models[devId]
+        return self.models[dev_id]
 
     # dead code
-
-    def registerDeviceEvent(self, deviceEvent):
-        pass
-
-    def registerDeviceChangedEvent(self, deviceEvent):
-        pass
-
-    def registerSensorEvent(self, deviceEvent):
-        pass
-
-    def doRequest(self, method, params):
-        pass
 
     def listRemotes(self):
         if not self.devicesRetrieved:
@@ -307,5 +289,5 @@ class lifxnet(lifxbase):
 
         return self.sensors
 
-    def sensorThread(self, sensorCallback, dummy):
-        pass
+    # def sensorThread(self, sensorCallback, dummy):
+    #    pass

@@ -64,7 +64,7 @@ class lifxbase(object):
     def __delete__(self, obj):
         pass
 
-    def init(self, SensorPollDelay, TempUnits):
+    def init(self, API_KEY=None, sensor_poll_delay=None, temp_units='C'):
         pass
 
     def close(self):
