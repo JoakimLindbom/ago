@@ -74,7 +74,6 @@ class AgoLIFX(agoclient.AgoApp):
         API = self.get_config_option('API', 'Cloud', section='lifx', app='lifx')
         self.log.info("Configuration parameter 'API'=%s", API)
         if "Cloud" in API:
-            #API_KEY = self.get_config_option('APIKEY', 'c7d12d4b5176bea52eba449211ca5e7551d9ce737d0dc36623968e3550bcb460', section='LIFX', app='LIFX')
             API_KEY = self.get_config_option('APIKEY', 'NoKey', section='lifx', app='lifx')
             self.log.info("Configuration parameter 'APIKEY'=%s", API_KEY)
             self.lifx = LifxNet(self)
@@ -91,36 +90,31 @@ class AgoLIFX(agoclient.AgoApp):
             param = self.get_config_option("some_key", "0")
             self.log.info("Configuration parameter 'some_key' is now set to %s", param)
 
-        # we add a switch and a dimmer
+        # Get devices and add to agocontrol
         self.lifx.list_lights()
         self.switches = self.lifx.listSwitches()
         if len(self.switches) >0:
-            print self.switches
+            #print self.switches
+            self.log.info('Looking for devices, found:')
             for devId, dev in self.switches.iteritems():
-                #if dev["model"]==""
-                print dev
-                print dev["model"]
-                self.log.info("MODEL=%s", dev["model"])
-                self.connection.add_device(dev["id"], "dimmer", 'lifx-dimmer')
+                self.log.info('Name = {}, Model={}'.format(dev["name"], dev["model"]))
+                self.connection.add_device(dev["id"], "dimmer", dev["name"]) # TODO: Check dimming to set correct type
 
         # for our threading lifx in the next section we also add a binary sensor:
         #self.connection.add_device("125", "binarysensor")
 
-        BACKGROUND = TestEvent(self, self.log)
+        BACKGROUND = PullStatus(self, self.log)
         BACKGROUND.setDaemon(True)
         BACKGROUND.start()
 
 
     def app_cleanup(self):
-        # When our app is about to shutdown, we should clean up any resources we've
-        # allocated in app_setup. This is done here.
-        # In this lifx, we do not have any resources..
         pass
 
 
-
-class TestEvent(threading.Thread):
-    """Test Event."""
+class PullStatus(threading.Thread):
+    """The background thread is checking status of the bulbs
+       This is needed if e.g. the LIFX smartphone app  och scheduling is used to alter state"""
     def __init__(self, app, log):
         threading.Thread.__init__(self)
         self.app = app
@@ -130,8 +124,6 @@ class TestEvent(threading.Thread):
     def run(self):
         level = 0
         self.log.info('Background tread started')
-
-        # It is important that we exit when told to, by checking is_exit_signaled.
 
         # TODO: Improve this; we do not handle proper shutdown..
         while not self.app.is_exit_signaled():
