@@ -118,9 +118,7 @@ class AgoLIFX(agoclient.AgoApp):
                     self.connection.add_device(dev["id"], "dimmer", dev["name"])  # TODO: Check dimming to set correct type
                 elif 'Color' in dev["model"]:
                     self.connection.add_device(dev["id"], "dimmerrgb", dev["name"])
-
-        # for our threading lifx in the next section we also add a binary sensor:
-        # self.connection.add_device("125", "binarysensor")
+        # self.connection.add_device('test123', "dimmerrgb", 'test123')
 
         BACKGROUND = PullStatus(self, self.log)
         BACKGROUND.setDaemon(True)
