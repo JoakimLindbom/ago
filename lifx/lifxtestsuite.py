@@ -21,9 +21,7 @@ class lifxTests(unittest.TestCase):
         if len(self.switches) > 0:
             #print switches
             for devId, dev in self.switches.iteritems():
-                print ('devId={}'.format(devId))
-                print ('dev={}'.format(dev))
-                print ('MODEL={}'.format(dev["model"]))
+                print ('devId={} dev={}'.format(devId, dev))
 
     def test3_getLightState(self):
         if len(self.switches) > 0:
@@ -45,12 +43,13 @@ class lifxTests(unittest.TestCase):
             self.assertTrue(self.lifx.turnOn(devid))
 
     def test5_dim(self):
-        for devid in self.switches:
-            self.assertTrue(self.lifx.dim(devid, 100))
-            time.sleep(1)
-            self.assertTrue(self.lifx.dim(devid, 10))
-            time.sleep(1)
-            self.assertTrue(self.lifx.dim(devid, 100))
+        for devid, dev in self.switches.iteritems():
+            if dev["isDimmer"]:
+                self.assertTrue(self.lifx.dim(devid, 100))
+                time.sleep(1)
+                self.assertTrue(self.lifx.dim(devid, 10))
+                time.sleep(1)
+                self.assertTrue(self.lifx.dim(devid, 100))
 
     def tearDown(self):
         for devid in self.switches:

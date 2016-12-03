@@ -70,16 +70,17 @@ class AgoLIFX(agoclient.AgoApp):
                     self.connection.emit_event(internalid, "event.device.statechanged", content["level"], "")
                 else:
                     self.log.error("Failed dimming device")
+
             elif content["command"] == "setcolor":
                 red = int(content["red"]);
                 green = int(content["green"]);
                 blue = int(content["blue"]);
-                self.log.debug("setting color for: {} - R={} B={} G={}".format(internalid), red, blue, green)
-
-
+                self.log.debug("setting color for: {} - R={} B={} G={}".format(internalid, red, blue, green))
+                self.lifx.set_colour(internalid, red, blue, green)
+                #self.connection.emit_event(internalid, "event.device.statechanged", content["level"], "")
 
     def setup_app(self):
-        # Specify our message handler method
+        """ Set-up of app"""
         self.connection.add_handler(self.message_handler)
 
         if self.args.test:
@@ -114,11 +115,12 @@ class AgoLIFX(agoclient.AgoApp):
             self.log.info('Looking for devices, found:')
             for devId, dev in self.switches.iteritems():
                 self.log.info('Name = {}, Model={}'.format(dev["name"], dev["model"]))
-                if 'White' in dev["model"]:
-                    self.connection.add_device(dev["id"], "dimmer", dev["name"])  # TODO: Check dimming to set correct type
-                elif 'Color' in dev["model"]:
+                if dev["isRGB"]:  # TODO: Check dimming to set correct type
                     self.connection.add_device(dev["id"], "dimmerrgb", dev["name"])
-        # self.connection.add_device('test123', "dimmerrgb", 'test123')
+                    self.log.info('Added {} as dimmer'.format(dev["id"]))
+                else:
+                    self.connection.add_device(dev["id"], "dimmer", dev["name"])
+                    self.log.info('Added {} as dimmerrgb'.format(dev["id"]))
 
         BACKGROUND = PullStatus(self, self.log)
         BACKGROUND.setDaemon(True)
@@ -143,10 +145,13 @@ class PullStatus(threading.Thread):
         # TODO: Improve this; we do not handle proper shutdown..
         while not self.app.is_exit_signaled():
             for devid in self.switches:
-                state = self.app.lifx.getLightState(devid)
-                self.app.connection.emit_event(devid, "event.device.statechanged", state["dimlevel"] if state["power"] == u'on' else 0, "")
-                self.log.debug("PullStatus: {}, {}, level={}".format(devid, state["power"], state["dimlevel"]))
-            time.sleep(30)  # TODO: Calculate ((60-n)/NoDevices)/60
+                try:
+                    state = self.app.lifx.getLightState(devid)
+                    self.app.connection.emit_event(devid, "event.device.statechanged", state["dimlevel"] if state["power"] == u'on' else 0, "")
+                    self.log.debug("PullStatus: {}, {}, level={}".format(devid, state["power"], state["dimlevel"]))
+                except TypeError as e:
+                    self.log.error("PullStatus: Exception occurred in background thread. {}".format(e.message))
+            time.sleep(10)  # TODO: Calculate ((60-n)/NoDevices)/60
 
 if __name__ == "__main__":
     AgoLIFX().main()

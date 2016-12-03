@@ -17,8 +17,6 @@ __version__ = AGO_LIFX_VERSION
 ############################################
 
 from lifxbase import lifxbase
-# import sys, getopt, httplib, urllib, json, os, thread, time
-# import oauth.oauth as oauth
 import time
 from agoclient.agoapp import ConfigurationError
 import json
@@ -153,12 +151,21 @@ class LifxNet(lifxbase):
                         "id": dev_id,
                         "name": i["label"],
                         "model": model}
-                    if 'White' in model:  # TODO: Replace with Dimmer property, also add colour property based on capability
+
+                    if 'White' in model or 'Color' in model:  # TODO: Replace with Dimmer property, also add colour property based on capability
                         dev["isDimmer"] = True
                     else:
                         dev["isDimmer"] = False
-                    # light["status"] = "on" if i["connected"] else "Off"
+
+                    if 'Color' in model:  # TODO: Replace with Dimmer property, also add colour property based on capability
+                        dev["isRGB"] = True
+                    else:
+                        dev["isRGB"] = False
+
+                    dev["status"] = "on" if i["connected"] else "off"
+                    dev["dimlevel"] = i["brightness"]*100
                     self.switches[dev_id] = dev
+            self.devicesRetrieved = True
         return self.switches
 
     def getErrorString(self, res_code):
@@ -174,7 +181,7 @@ class LifxNet(lifxbase):
         # print payload
         response = requests.put('https://api.lifx.com/v1/lights/' + devId + '/state', data=payload, headers=self.headers)
         # return self.doMethod(devId, self.LIFX_DIM, level)
-        try:
+        try:  # TODO: Move retry to setstate
             return self.checkResponse(response)
         except LIFX_Offline:
             """Workaround for intermediate Offline status"""
@@ -231,6 +238,7 @@ class LifxNet(lifxbase):
                 502: 'Something went wrong on LIFXs end.',
                 503: 'Something went wrong on LIFXs end.',
                 523: 'Something went wrong on LIFXs end.',
+                525: 'Something went wrong on LIFXs end. Official response: Oops!',
             }
             return sw.get(error_code, "Something went wrong and no message text assigned. Bummer.")
 
