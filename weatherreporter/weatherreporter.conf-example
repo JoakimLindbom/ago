@@ -1,0 +1,23 @@
+[weatherreporter]
+log_level=trace
+
+[General]
+Delay = 150
+sensors=S1,S27
+
+[WeatherUnderground]
+Password=your_password
+Delay=151
+
+[temperatur.nu]
+Delay=152
+
+[S1]
+Desc=Utesensor garaget
+UUID = 12345678-1234-1234-1234-123456789abc
+WU-Station=ABCDEXYZ1
+TN-Hash = 12345678901234567890123456789012
+
+[S27]
+Desc=Utesensor entrance
+UUID = 12345678-1234-1234-1234-123456789cba
