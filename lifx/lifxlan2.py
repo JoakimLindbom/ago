@@ -21,7 +21,7 @@ import time
 from agoclient.agoapp import ConfigurationError
 import json
 from lifxlan import *
-
+import colorsys
 
 class LIFX_Offline(Exception):
     def __init__(self, msg):
@@ -43,6 +43,7 @@ class LifxLAN2(lifxbase):
         with open('prodinfo.json') as json_file:
             self.prodinfo =json.load(json_file)
 
+        # TODO: self.colour: remove or move to device
         self.colour = {"hue": None,
                        "saturation": None,
                        "brightness": None,
@@ -88,43 +89,70 @@ class LifxLAN2(lifxbase):
         """Set state of light to on, off, color, dim """
         pass
 
-    def set_colour(self, devid, red, blue, green):
-        """Set light to colour (RGB) """  # TODO: Recalculate into HSBK format, not supporting RGB
+    def set_colour(self, devid, red, green, blue):
+        """Set light to colour (RGB)
+           rgb: 0-255
+        """
         print red
         print blue
         print green
 
-        payload = {"color": "rgb:{},{},{}".format(red, green, blue)}
-        self.log.info(payload)  # TODO: Change to trace
-        return self.set_state(devid, payload)
+        self.log.info("color rgb:{},{},{}".format(red, green, blue))  # TODO: Change to trace
+
+        self.devices[devid]["bulb"].set_RGB(red, green, blue)
+
+        return
+
+        #h, s, b = colorsys.rgb_to_hsv(red/255.0, green/255.0, blue/255.0)
+
+        #print ("hue={}".format(h))
+        #print ('brightness={}'.format(b))
+        #print ('sat={}'.format(s))
+
+        #hue = int(round(h * 65535.0, 0))
+        #sat = int(round(s * 65535.0, 0))
+        #light = int(round(b * 65535.0, 0))
+
+        #self.devices[devid]["bulb"].set_HSB(hue, sat, light)
+
+        #return
 
     def list_lights(self):
         """Get a list of devices on local LAN"""
         self.devices = {}
         devices = self.lifx.get_lights()
+        if devices is None:
+            return None
+
         for i in devices:
             dev_id = i.source_id
-
+            name = i.get_label()
             dev = {
-                "id": dev_id,
-                "name": i.get_label(),
+                "id": name,
+                "internal_id": dev_id,
+                "name": name,
                 'bulb': i}
-
+            print dev_id
+            print i
             for m in self.prodinfo[0]['products']:
+                #print m
                 if i.product == m['pid']:
+                    #print "found"
                     dev['model'] = m['name']
                     if m['features']['color'] == True:
                         dev["isRGB"] = True
                     else:
                         dev["isRGB"] = False
                     # TODO: Also check ['features']['infrared'] and ['features']['multizone']
+                    break
 
             dev["isDimmer"] = True
             try:
                 power = i.get_power()
-                lvl = power/65535
-                print lvl
-                dev["dimlevel"] = int(lvl*100)  # From 16 bit integer to percent
+                lvl = int(100.0 * round(power / 65535.0, 2))
+                #lvl = power/65535.0
+                #dev["dimlevel"] = int(lvl*100)  # From 16 bit integer to percent
+                dev["dimlevel"] = lvl  # From 16 bit integer to percent
                 #dev["dimlevel"] = int((i.power_level/65535)*100)  # From 16 bit integer to percent
                 dev["status"] = "on" if lvl > 0 else "off"
             except:
@@ -132,8 +160,8 @@ class LifxLAN2(lifxbase):
                 print i
                 print i.power_level
 
-            self.switches[dev_id] = dev
-            self.devices[dev_id] = dev
+            self.switches[name] = dev
+            self.devices[name] = dev
 
             self.log.info('Found {}'.format(dev['name']))
 
@@ -145,15 +173,21 @@ class LifxLAN2(lifxbase):
         """Get state of one light"""
         self.log.trace('getLighState {}'.format(self.devices[devid]["name"]))
 
-        power = self.devices[devid]["bulb"].get_power()
+        try:
+            power = self.devices[devid]["bulb"].get_power()
+        except IOError:
+            self.log.error('IOError from LIFXLAN. Ignoring request')
+            return None  # TODO: On IOError - log + return last known value?
+
         color = self.devices[devid]["bulb"].get_color()
         self.colour = {"hue": color[0],
                        "saturation": color[1],
                        "brightness": color[2],
                        "kelvin": color[3]}
-        lvl = int(100*self.colour["brightness"]/65535)
 
-        print lvl
+        lvl = int(100.0 * round(self.colour["brightness"] / 65535.0, 2))
+
+        #print('Brightness={}, level={}'.format(self.colour["brightness"], lvl))
         self.devices[devid]["dimlevel"] = lvl  # From 16 bit integer to percent
 
         state = {"power":    u'on' if power > 0 else u'off',  # 'on'/'off'
@@ -176,19 +210,14 @@ class LifxLAN2(lifxbase):
     def getErrorString(self, res_code):
         return res_code  # TOT: Remove
 
-    def dim(self, devId, level, limit=0):
+    def dim(self, devId, level, duration=1, limit=0):
         """ Dim light, level=0-100 """
-        #self.log.trace('Dim {} level {}'.format(self.devices[devId]["name"]), str(float(level/100.0))))
-        self.log.trace('Dim {} '.format(self.devices[devId]["name"]))
-        self.log.trace('Level {}'.format(str(float(level/100.0))))
-        if self.colour["hue"] == None:
-            self.get_colour(devId)
+        self.log.trace('Dim {} Level {}%'.format(self.devices[devId]["name"], str(float(level))))
         power = 65535*level/100
-        color = (self.colour["hue"], self.colour["saturation"], power, self.colour["kelvin"])
-        self.devices[devId]["bulb"].set_color(color, duration=1, rapid=False)
+        self.devices[devId]["bulb"].set_brightness(power, duration=duration, rapid=False)
         self.colour["brightness"] = power
         self.dim_level = level
-        #TODO: Add support for Duration
+        # TODO: duration needs to be handled by a thread that gradually fades
 
         return True
 
@@ -207,6 +236,25 @@ class LifxLAN2(lifxbase):
                        "kelvin": color[3]}
         return self.colour
 
+    def set_colourtemp(self, devId, kelvin):
+        """ Set colour temperature of light. Other colour parameters not affected"""
+        self.devices[devId]["bulb"].set_colortemp(kelvin, duration=1)
+        return True  # TODO Check if colour temp was changed
+
+    def set_brightness(self, devId, lvl):
+        """ test """
+        self.devices[devId]["bulb"].set_brightness(lvl, duration=1)
+        return True  # TODO Check if brightness was changed
+
+    def set_hue(self, devId, hue):
+        """ test """
+        self.devices[devId]["bulb"].set_hue(hue, duration=1)
+        return True  # TODO Check if brightness was changed
+
+    def set_saturation(self, devId, saturation):
+        """ test """
+        self.devices[devId]["bulb"].set_saturation(saturation, duration=1)
+        return True  # TODO Check if brightness was changed
 
     def checkResponse(self, response):
         pass
@@ -270,36 +318,4 @@ class LifxLAN2(lifxbase):
         return self.remotes
 
     def listSensors(self):
-        response = self.doRequest('sensors/list', {'includeIgnored': 1, 'includeValues': 1})
-        self.log.info("Number of sensors: %i" % len(response['sensor']))
-        for sensor in response['sensor']:
-            if sensor["id"] not in self.sensors:
-                s = {}
-                devId = str(sensor["id"])
-                s["id"] = devId
-                s["name"] = sensor["name"]
-                s["new"] = True
-                if "temp" in sensor:
-                    s["isTempSensor"] = True
-                    s["temp"] = float(sensor["temp"])  # C/ F
-                    s["lastTemp"] = -274.0
-                else:
-                    s["isTempSensor"] = False
-
-                if "humidity" in sensor:
-                    s["id"] = devId
-                    s["isHumiditySensor"] = True
-                    s["humidity"] = float(sensor["humidity"])
-                    s["lastHumidity"] = -999.0
-                else:
-                    s["isHumiditySensor"] = False
-
-                if "temp" in sensor and "humidity" in sensor:
-                    s["isMultiLevel"] = True
-                else:
-                    s["isMultiLevel"] = False
-
-                self.sensors[devId] = s
-                self.names[sensor["id"]] = devId
-
-        return self.sensors
+        pass
