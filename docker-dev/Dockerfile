@@ -1,5 +1,7 @@
 FROM resin/rpi-raspbian:jessie-20160831  
 
+MAINTAINER Joakim.Lindbom@gmail.com
+
 # Install dependencies
 RUN apt update 
 RUN apt -qy install apt-utils
