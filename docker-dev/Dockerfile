@@ -39,6 +39,19 @@ RUN apt -qy install libboost-program-options-dev \
 RUN apt -qy install libprocps-dev \
                     libcppdb-dev curl
 RUN apt -qy install cmake-curses-gui
+RUN apt -qy install build-essential \
+                    debhelper
+RUN apt -qy install libssl-dev 
+
+#RUN apt -qy install knxd-dev
+# (>= 0.10.9) | libeibclient-dev (<= 0.0.5) 
+
+RUN apt -qy install lsb-release 
+RUN apt -qy install libopencv-dev \
+                    libopencv-core-dev \
+                    libopencv-imgproc-dev \
+                    libopencv-objdetect-dev \
+                    libopencv-highgui-dev
 
 RUN apt -qy install wget 
 
