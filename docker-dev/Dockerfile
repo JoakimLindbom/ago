@@ -38,6 +38,7 @@ RUN apt -qy install libboost-program-options-dev \
                     librrd-dev 
 RUN apt -qy install libprocps-dev \
                     libcppdb-dev curl
+RUN apt -qy install cmake-curses-gui
 
 RUN apt -qy install wget 
 
